@@ -5,7 +5,7 @@ An emulator for my 8-bit computer in Lumber Tycoon 2.
 - q - quit
 - c - step the emulator
 - go - go until the program reaches some line Eg: -> go 12
-- set - set values in memory to some value (below 255) Eg: -> set r0 10 or set m3 255
+- set - set values in memory to some value (below 256) Eg: -> set r0 10 or set m3 255
 - load - loads a program from the "emulator" folder Eg: -> load collatz.txt or load division.txt
 
 Note: The instruction addresses are 0-indexed.
@@ -14,7 +14,7 @@ Note: The instruction addresses are 0-indexed.
 0 1 2 3 4 5 6 7
 
 - 0-3: instruction type
-- 4-7: immediate (jumps, LUI, LLi)
+- 4-7: immediate (jumps, LUI, LLI)
 - 4-5: ram address (load, store)
 - 6: destination register (add, subtract, left shift, right shift, increment)
 - 7: source register (add, subtract, left shift, right shift, increment)
@@ -45,5 +45,7 @@ Note: The instruction addresses are 0-indexed.
 # NOTES
 The ingame computer is a little different than this emulator, here is everything that's different:
 - After a print instruction, you should only call print again after atleast 2 instructions, otherwise the display can't keep up
-- The print instruction is special because it uses all 8 bits -> 4-5: memory address, 6: register address, 7: "decider" 
-(0 to load from memory, 1 to load from registers)
+- The print instruction is special because it uses all 8 bits -> 4-5: memory address, 6: register address, 7: "decider" (refer to instruction layout section)
+- There is a switch that makes the computer halt if an overflow is detected, but I didn't bother to add that in this emulator
+- The LUI instruction just writes to the 0th register, but the LLI also reads from it while writing to it. That's how the immediate loading works.
+- The print instruction prints numbers ingame using the Double Dabble Algorithm to convert a binary number to BCD (binary-coded decimal), althought I did not implement that algorithm into the emulator.
