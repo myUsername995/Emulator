@@ -6,7 +6,7 @@ An emulator for my 8-bit computer in Lumber Tycoon 2.
 - c - step the emulator
 - go - go until the program reaches some line Eg: -> go 12
 - set - set values in memory to some value (below 255) Eg: -> set r0 10 or set m3 255
-- load - loads a program from the "emulator" folder Eg: -> load collatz.txt - load division.txt
+- load - loads a program from the "emulator" folder Eg: -> load collatz.txt or load division.txt
 
 Note: The instruction addresses are 0-indexed.
 
