@@ -116,6 +116,16 @@ struct Parameter {
     bool valid = true;
 };
 
+#include <windows.h>
+
+void enableVTMode() {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD dwMode = 0;
+    GetConsoleMode(hOut, &dwMode);
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hOut, dwMode);
+}
+
 // Helpers
 InstructionType stringToType(const std::string& str){
     if (str == "NOP") return NOP;
@@ -619,6 +629,7 @@ void handleInput(const std::string& input, State& state){
 
 int main(int argc, char* argv[]){
     State currentState;
+    enableVTMode();
 
     while (currentState.run){
         printState(currentState);
