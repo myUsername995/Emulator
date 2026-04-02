@@ -66,6 +66,7 @@ The ingame computer is a little different than this emulator, here is everything
 constexpr int numMemorySlots = 4;
 constexpr int numRegisters = 2;
 constexpr int maxInstructions = 16;
+std::string errorMessage = "";
 
 enum InstructionType {
     NOP,
@@ -87,6 +88,12 @@ enum InstructionType {
     UNKNOWN
 };
 
+enum ParameterType {
+    REGISTER,
+    MEMORY,
+    IMMEDIATE
+};
+
 struct State {
     // The state of the computer
     uint8_t registers[numRegisters] = {0};
@@ -101,6 +108,12 @@ struct State {
 
     bool run = true;
     std::vector<std::string> program;
+};
+
+struct Parameter {
+    ParameterType type;
+    int value;
+    bool valid = true;
 };
 
 // Helpers
@@ -125,20 +138,81 @@ InstructionType stringToType(const std::string& str){
     return UNKNOWN;
 }
 
+int stringToNum(const std::string& str, bool& isNumber){
+    try {
+        int value = std::stoi(str);
+        isNumber = true;
+        return value;
+    }
+    catch (...){
+        isNumber = false;
+        return 0;
+    }
+}
+
 // Evaluate a single line
 void evaluateNextLine(State& state){
-    std::string line = state.program[state.curInstruction];
-    std::stringstream lineStr(line);
-    std::string command, word1, word2;
-    lineStr >> command >> word1 >> word2;
+    if (state.program.size() <= state.curInstruction){
+        errorMessage = "Can't execute a line that doesn't exist.\n";
+        return;
+    }
 
-    InstructionType type = stringToType(command);
+    auto setParameterStruct = [](Parameter& param, const std::string& str, const std::string& command){
+        // Not really an error, could be that the current instruction doesn't need a parameter
+        if (str.size() == 0){
+            param.valid = false;
+            return;
+        }
 
-    int number1 = -1;
-    int number2 = -1;
+        if (str[0] == 'm') param.type = MEMORY;
+        else if (str[0] == 'r') param.type = REGISTER;
+        else param.type = IMMEDIATE;
 
-    if (word1.size() == 2) number1 = std::stoi(std::string(1, word1[1]));
-    if (word2.size() == 2) number2 = std::stoi(std::string(1, word2[1]));
+        switch (param.type){
+            case REGISTER:
+            case MEMORY: {
+                if (str.size() != 2){
+                    param.valid = false;
+                    errorMessage += "Invalid string length for parameter.\n";
+                    break;
+                }
+                bool isNum;
+                param.value = stringToNum(std::string(1, str[1]), isNum);
+
+                if (!isNum){
+                    errorMessage += "The memory address inputted is not a number\n";
+                    param.valid = false;
+                    break;
+                }
+                break;
+            }
+            case IMMEDIATE: {
+                bool isNum;
+                param.value = stringToNum(str, isNum);
+
+                if (!isNum){
+                    errorMessage += "The memory address inputted is not a number\n";
+                    param.valid = false;
+                    break;
+                }
+                break;
+            }
+        }
+    };
+
+    auto printErrors = [](Parameter& param, const std::string& command){
+        if (param.type == REGISTER){
+            if (param.value < 0 || param.value >= numRegisters){
+                errorMessage += "Invalid register for " + command + " instruction.\n";
+            }
+        }
+        else if (param.type == MEMORY){
+            if (param.value < 0 || param.value >= numMemorySlots){
+                errorMessage += "Invalid memory address for " + command + " instruction.\n";
+            }
+        }
+        // For immediate values, the range of valid values may be defined by each instruction
+    };
 
     auto setFlags = [](State& state, int result){
         state.overflowFlag = false;
@@ -152,196 +226,221 @@ void evaluateNextLine(State& state){
         if (result > 0) state.aboveFlag = true;
     };
 
+    std::string line = state.program[state.curInstruction++];
+    std::stringstream lineStr(line);
+    std::string command(""), param1Str(""), param2Str("");
+    lineStr >> command >> param1Str >> param2Str;
+
+    InstructionType type = stringToType(command);
+    if (type == UNKNOWN){
+        errorMessage += "Invalid instruction\n";
+        return;
+    }
+
+    Parameter param1, param2;
+    setParameterStruct(param1, param1Str, command);
+    setParameterStruct(param2, param2Str, command);
+
+    printErrors(param1, command);
+    printErrors(param2, command);
+
     switch (type){
         case NOP: {
             break;
         }
         case LOAD: {
-            if (word1.size() != 2 || word1[0] != 'm' || word2.size() != 2 || word2[0] != 'r'){
-                std::cerr << "Invalid syntax for load instruction." << std::endl;
-            }
-
-            int memoryIndex = number1;
-            int registerIndex = number2;
-
-            if (memoryIndex >= numMemorySlots || registerIndex >= numRegisters){
-                std::cerr << "Invalid register or memory index for load instruction." << std::endl;
+            if (!param1.valid || !param2.valid) break;
+            if (param1.type != MEMORY || param2.type != REGISTER){
+                errorMessage += "Invalid parameter types for load instruction.\n";
                 break;
             }
 
+            int memoryIndex = param1.value;
+            int registerIndex = param2.value;
+
             state.registers[registerIndex] = state.memory[memoryIndex];
-            state.curInstruction++;
             break;
         }
         case STORE: {
-            if (word1.size() != 2 || word1[0] != 'm' || word2.size() != 2 || word2[0] != 'r'){
-                std::cerr << "Invalid syntax for store instruction." << std::endl;
-            }
-
-            int memoryIndex = number1;
-            int registerIndex = number2;
-
-            if (memoryIndex >= numMemorySlots || registerIndex >= numRegisters){
-                std::cerr << "Invalid register or memory index for store instruction." << std::endl;
+            if (!param1.valid || !param2.valid) break;
+            if (param1.type != MEMORY || param2.type != REGISTER){
+                errorMessage += "Invalid parameter types for store instruction.\n";
                 break;
             }
 
+            int memoryIndex = param1.value;
+            int registerIndex = param2.value;
+
             state.memory[memoryIndex] = state.registers[registerIndex];
-            state.curInstruction++;
             break;
         }
         case ADD: {
-            if (word1.size() != 2 || word1[0] != 'r' || word2.size() != 2 || word2[0] != 'r'){
-                std::cerr << "Invalid syntax for add instruction." << std::endl;
-            }
-
-            int baseRegister = number2;
-            int addRegister = !number2;
-            int destinationRegister = number1;
-
-            if (number1 >= numRegisters || number2 >= numRegisters){
-                std::cerr << "Invalid register or memory index for add instruction." << std::endl;
+            if (!param1.valid || !param2.valid) break;
+            if (param1.type != REGISTER || param2.type != REGISTER){
+                errorMessage += "Invalid parameter types for add instruction.\n";
                 break;
             }
+
+            int baseRegister = param2.valid;
+            int addRegister = !param2.valid;
+            int destinationRegister = param1.valid;
 
             int result = state.registers[baseRegister] + state.registers[addRegister];
             setFlags(state, result);
 
             state.registers[destinationRegister] = static_cast<uint8_t>(result);
-            state.curInstruction++;
             break;
         }
         case SUBTRACT: {
-            if (word1.size() != 2 || word1[0] != 'r' || word2.size() != 2 || word2[0] != 'r'){
-                std::cerr << "Invalid syntax for subtract instruction." << std::endl;
+            if (!param1.valid || !param2.valid) break;
+            if (param1.type != REGISTER || param2.type != REGISTER){
+                errorMessage += "Invalid parameter types for subtract instruction.\n";
+                break;
             }
 
             // The source register parameter specifies which register has to be the second number in the subtraction
-            int baseRegister = !number2;
-            int subRegister = number2;
-            int destinationRegister = number1;
-
-            if (number1 >= numRegisters || number2 >= numRegisters){
-                std::cerr << "Invalid register or memory index for subtract instruction." << std::endl;
-                break;
-            }
+            int baseRegister = !param2.value;
+            int subRegister = param2.value;
+            int destinationRegister = param1.value;
 
             int result = state.registers[baseRegister] - state.registers[subRegister];
             setFlags(state, result);
 
             state.registers[destinationRegister] = static_cast<uint8_t>(result);
-            state.curInstruction++;
             break;
         }
         case LEFT_SHIFT: {
-            if (word1.size() != 2 || word1[0] != 'r' || word2.size() != 2 || word2[0] != 'r'){
-                std::cerr << "Invalid syntax for left shift instruction." << std::endl;
-            }
-
-            int sourceRegister = number2;
-            int destinationRegister = number1;
-
-            if (sourceRegister >= numRegisters || destinationRegister >= numRegisters){
-                std::cerr << "Invalid register or memory index for left shift instruction." << std::endl;
+            if (!param1.valid || !param2.valid) break;
+            if (param1.type != REGISTER || param2.type != REGISTER){
+                errorMessage += "Invalid parameter types for left shift instruction.\n";
                 break;
             }
+
+            int sourceRegister = param2.value;
+            int destinationRegister = param1.value;
 
             int result = state.registers[sourceRegister] / 2;
             setFlags(state, result);
 
             state.registers[destinationRegister] = static_cast<uint8_t>(result);
-            state.curInstruction++;
             break;
         }
         case RIGHT_SHIFT: {
-            if (word1.size() != 2 || word1[0] != 'r' || word2.size() != 2 || word2[0] != 'r'){
-                std::cerr << "Invalid syntax for right shift instruction." << std::endl;
-            }
-
-            int sourceRegister = number2;
-            int destinationRegister = number1;
-
-            if (sourceRegister >= numRegisters || destinationRegister >= numRegisters){
-                std::cerr << "Invalid register or memory index for right shift instruction." << std::endl;
+            if (!param1.valid || !param2.valid) break;
+            if (param1.type != REGISTER || param2.type != REGISTER){
+                errorMessage += "Invalid parameter types for right shift instruction.\n";
                 break;
             }
+
+            int sourceRegister = param2.value;
+            int destinationRegister = param1.value;
 
             int result = state.registers[sourceRegister] * 2;
             setFlags(state, result);
 
             state.registers[destinationRegister] = static_cast<uint8_t>(result);
-            state.curInstruction++;
             break;
         }
         case JUMP: {
-            int immediate = std::stoi(word1);
-
-            if (immediate < 0 || immediate >= maxInstructions){
-                std::cerr << "Invalid immediate for jump instruction." << std::endl;
+            if (!param1.valid){
+                break;
+            }
+            else if (param2Str.size() > 0){
+                errorMessage += "Too many parameters for jump instruction.\n";
+                break;
+            }
+            else if (param1.type != IMMEDIATE){
+                errorMessage += "Invalid parameter type for jump instruction.\n";
+            }
+            else if (param1.value < 0 || param1.value >= maxInstructions){
+                errorMessage += "Invalid immediate for jump instruction.\n";
                 break;
             }
 
-            state.curInstruction = immediate;
+            state.curInstruction = param1.value;
             break;
         }
         case JUMP_IF_NEGATIVE: {
-            int immediate = std::stoi(word1);
-
-            if (immediate < 0 || immediate >= maxInstructions){
-                std::cerr << "Invalid immediate for jump_if_negative instruction." << std::endl;
+            if (!param1.valid){
+                break;
+            }
+            else if (param2Str.size() > 0){
+                errorMessage += "Too many parameters for jump_if_negative instruction.\n";
+                break;
+            }
+            else if (param1.type != IMMEDIATE){
+                errorMessage += "Invalid parameter type for jump_if_negative instruction.\n";
+            }
+            else if (param1.value < 0 || param1.value >= maxInstructions){
+                errorMessage += "Invalid immediate for jump_if_negative instruction.\n";
                 break;
             }
 
             if (state.negativeFlag){
-                state.curInstruction = immediate;
-            }
-            else {            
-                state.curInstruction++;
+                state.curInstruction = param1.value;
             }
             break;
         }
         case JUMP_IF_ZERO: {
-            int immediate = std::stoi(word1);
-
-            if (immediate < 0 || immediate >= maxInstructions){
-                std::cerr << "Invalid immediate for jump_if_zero instruction." << std::endl;
+            if (!param1.valid){
+                break;
+            }
+            else if (param2Str.size() > 0){
+                errorMessage += "Too many parameters for jump_if_zero instruction.\n";
+                break;
+            }
+            else if (param1.type != IMMEDIATE){
+                errorMessage += "Invalid parameter type for jump_if_zero instruction.\n";
+            }
+            else if (param1.value < 0 || param1.value >= maxInstructions){
+                errorMessage += "Invalid immediate for jump_if_zero instruction.\n";
                 break;
             }
 
             if (state.zeroFlag){
-                state.curInstruction = immediate;
-            }
-            else {
-                state.curInstruction++;
+                state.curInstruction = param1.value;
             }
             break;
         }
         case JUMP_IF_ABOVE: {
-            int immediate = std::stoi(word1);
-
-            if (immediate < 0 || immediate >= maxInstructions){
-                std::cerr << "Invalid immediate for jump_if_above instruction." << std::endl;
+            if (!param1.valid){
+                break;
+            }
+            else if (param2Str.size() > 0){
+                errorMessage += "Too many parameters for jump_if_abv instruction.\n";
+                break;
+            }
+            else if (param1.type != IMMEDIATE){
+                errorMessage += "Invalid parameter type for jump_if_abv instruction.\n";
+            }
+            else if (param1.value < 0 || param1.value >= maxInstructions){
+                errorMessage += "Invalid immediate for jump_if_abv instruction.\n";
                 break;
             }
 
             if (state.aboveFlag){
-                state.curInstruction = immediate;
-            }
-            else {
-                state.curInstruction++;
+                state.curInstruction = param1.value;
             }
             break;
         }
         case PRINT: {
+            if (!param1.valid) break;
+            if (param2Str.size() > 0){
+                errorMessage += "Too many parameters for print instruction.\n";
+                break;
+            }
+
             // Print a memory slot
-            if (word1[0] == 'm' && number1 >= 0 && number1 < numMemorySlots){
-                state.output = state.memory[number1];
+            if (param1.type == MEMORY){
+                state.output = state.memory[param1.value];
             }
             // Print a register
-            if (word1[0] == 'r' && number1 >= 0 && number1 < numRegisters){
-                state.output = state.registers[number1];
+            else if (param1.type == REGISTER){
+                state.output = state.registers[param1.value];
             }
-            state.curInstruction++;
+            else {
+                errorMessage += "Invalid parameter type for print instruction.\n";
+            }
             break;
         }
         case HALT: {
@@ -350,38 +449,54 @@ void evaluateNextLine(State& state){
         }
         // Load the upper 4 bits
         case LOAD_UPPER_IMMEDIATE: {
-            uint8_t upperNum = std::stoi(word1);
-            upperNum = (upperNum & 0x0F) << 4;
+            if (!param1.valid) break;
+            else if (param2Str.size() > 0){
+                errorMessage += "Too many parameters for LUI instruction.\n";
+                break;
+            }
+            else if (param1.type != IMMEDIATE){
+                errorMessage += "Invalid parameter type for LUI instruction.\n";
+                break;
+            }
+            else if (param1.value < 0 || param1.value >= 16){
+                errorMessage += "Invalid immediate for LUI instruction (Range: 0 - 16).\n";
+                break;
+            }
 
-            state.registers[0] = upperNum;
-            state.curInstruction++;
+            state.registers[0] = static_cast<uint8_t>(param1.value << 4);
             break;
         }
         // Load the lower 4 bits
         case LOAD_LOWER_IMMEDIATE: {
-            uint8_t lowerNum = std::stoi(word1);
-            lowerNum = lowerNum & 0x0F;
+            if (!param1.valid) break;
+            else if (param2Str.size() > 0){
+                errorMessage += "Too many parameters for LLI instruction.\n";
+                break;
+            }
+            else if (param1.type != IMMEDIATE){
+                errorMessage += "Invalid parameter type for LLI instruction.\n";
+                break;
+            }
+            else if (param1.value < 0 || param1.value >= 16){
+                errorMessage += "Invalid immediate for LLI instruction (Range: 0 - 16).\n";
+                break;
+            }
 
-            state.registers[0] |= lowerNum;
-            state.curInstruction++;
+            state.registers[0] |= static_cast<uint8_t>(param1.value);
             break;
         }
         case INCREMENT: {
-            if (word1.size() != 2 || word1[0] != 'r' || word2.size() != 2 || word2[0] != 'r'){
-                std::cerr << "Invalid syntax for increment instruction." << std::endl;
-            }
-
-            int sourceRegister = number2;
-            int destinationRegister = number1;
-
-            if (sourceRegister >= numRegisters || destinationRegister >= numRegisters){
-                std::cerr << "Invalid register or memory index for increment instruction." << std::endl;
+            if (!param1.valid || !param2.valid) break;
+            if (param1.type != REGISTER || param2.type != REGISTER){
+                errorMessage += "Invalid parameter types for increment instruction.\n";
                 break;
             }
+
+            int sourceRegister = param1.value;
+            int destinationRegister = param2.value;
             setFlags(state, state.registers[sourceRegister] + 1);
 
             state.registers[destinationRegister] = state.registers[sourceRegister] + 1;
-            state.curInstruction++;
             break;
         }
     }
@@ -423,11 +538,12 @@ void printState(State& state){
     std::cout << std::endl;
 
     std::cout << "Output: " << int(state.output) << std::endl;
+    int curInstruction = errorMessage.size() > 0 ? state.curInstruction-1 : state.curInstruction;
     if (state.program.size() > state.curInstruction){
-        std::cout << "Current instruction: " << state.program[state.curInstruction] << std::endl;
+        std::cout << "Current instruction: " << state.program[curInstruction] << " (" << curInstruction << ") " << std::endl;
     }
+    std::cout << "Errors: \n" << errorMessage << std::endl;
 
-    std::cout << std::endl;
     std::cout << "Enter command: ";
 
     std::cout.flush(); // ensure immediate update
@@ -506,6 +622,12 @@ int main(int argc, char* argv[]){
 
     while (currentState.run){
         printState(currentState);
+
+        // If we encounter an error, then quit the program
+        if (errorMessage.size() > 0){
+            currentState = State{};
+        }
+        errorMessage.clear();
 
         std::string line;
         std::getline(std::cin, line);
