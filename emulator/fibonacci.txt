@@ -1,0 +1,5 @@
+ADD r0 r0
+OUT r0
+ADD r1 r1
+OUT r1
+JMP 0

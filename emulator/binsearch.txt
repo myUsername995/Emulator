@@ -1,0 +1,15 @@
+LOD m0 r0
+LOD m1 r1
+SUB r1 r0
+LSH r1 r1
+ADD r0 r0
+OUT r0
+LOD m3 r1
+SUB r1 r1
+JIN 12
+JIZ 14
+STR m1 r0
+JMP 0
+STR m0 r0
+JMP 0
+HALT

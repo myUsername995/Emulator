@@ -1,0 +1,15 @@
+LOD m1 r1
+INC r1 r1
+STR m1 r1
+LOD m0 r1
+SUB r0 r1
+JIA 0
+LOD m1 r0
+ADD r1 r1
+LSH r1 r1
+LUI 0
+STR m1 r0
+STR m0 r1
+LOD m3 r0
+OUT r1
+JMP 0

@@ -1,0 +1,11 @@
+LSH r0 r1
+RSH r0 r0
+SUB r0 r0
+OUT r1
+JIZ 9
+RSH r0 r1
+ADD r1 r1
+INC r1 r1
+JMP 0
+LSH r1 r1
+JMP 0
